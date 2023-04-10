@@ -110,7 +110,7 @@ struct cluster{
 	using edge = std::pair<int, int>;
 	using labelled_edge = std::pair<edge, float>;
 
-	bool use_stars = false;
+	bool use_stars = true;
 
 	cluster(unsigned dim, bool m): d(dim), mips(m) {}
 
@@ -357,19 +357,19 @@ struct cluster{
 	*/
 	void stars(parlay::sequence<tvec_point*> &v, parlay::sequence<size_t> &active_indices, 
 		unsigned dim, int k, parlay::random &rnd, float epsilon=0.0){
-		size_t bin_length = active_indices.size()
+		size_t bin_length = active_indices.size();
 
 		// the indices of the centers which will be the roots of the star graphs
 		parlay::sequence<size_t> centers(k);
-		choose_k(&centers, k, bin_length, rnd);
+		choose_k(centers, k, bin_length, rnd);
 		
-		for (center : centers){
+		for (size_t center : centers){
 			// exhaustively computing distances
 			parlay::sequence<labelled_edge> distances = parlay::tabulate(bin_length, [&](size_t i){
 				return labelled_edge(edge(center, i), Distance(v[active_indices[center]]->coordinates.begin(), v[active_indices[i]]->coordinates.begin(), dim));
-			})
+			});
 			// sorting by ascending distance
-			parlay::sequence<labelled_edge> sorted_distances = parlay::sort(distances, [](labelled_edge a, labelled_edge b){
+			parlay::sequence<labelled_edge> sorted_distances = parlay::sort(distances, [&](labelled_edge a, labelled_edge b){
 				return a.second < b.second;
 			});
 
@@ -386,10 +386,10 @@ struct cluster{
 			}
 
 			// adding the edges to the graph (if this loop is parallelized, this would probably be where issues arise)
-			parlay::sequence<tvec_point> preserved_edges = parlay::tabulate(cutoff_index, [&](size_t i){
+			auto preserved_edges = parlay::tabulate(cutoff_index, [&](size_t i){
 				return sorted_distances[i].first;
 			});
-			parlay::sequence<tvec_point> preserved_edges_rev = parlay::tabulate(cutoff_index, [&](size_t i){
+			auto preserved_edges_rev = parlay::tabulate(cutoff_index, [&](size_t i){
 				return edge(sorted_distances[i].first.second, sorted_distances[i].first.first);
 			});
 			process_edges(v, preserved_edges);
@@ -406,8 +406,9 @@ struct cluster{
 	*/
 	void choose_k(parlay::sequence<size_t> &seq, int k, size_t n, parlay::random &rnd){
 		size_t initial_length = seq.size();
+		int i = 0;
 		while (seq.size() < initial_length + k){
-			size_t current = rnd.next() % n; // the generated random number to be checked
+			size_t current = rnd.ith_rand(i) % n; // the generated random number to be checked
 			bool present = false; // whether said number is already in seq
 
 			for (int i = 0; i < seq.size(); i++){
@@ -419,6 +420,7 @@ struct cluster{
 			if (!present) {
 				seq.push_back(current);
 			}
+			i++;
 		}
 	}
 };
